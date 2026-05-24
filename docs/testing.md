@@ -19,24 +19,24 @@ This document provides a step-by-step guide to test the ExternalDNS Namecheap we
 
 2. Build the webhook
    ```bash
-   go build -o namecheap-webhook .
+   go build -o namecheap-webhook ./cmd/webhook
    ```
 
 3. Create a `.env` file with your Namecheap API credentials
    ```bash
    cat > .env << EOF
-   export NAMECHEAP_API_KEY=your_api_key
-   export NAMECHEAP_USERNAME=your_username
-   export NAMECHEAP_API_USER=your_api_user
-   export NAMECHEAP_CLIENT_IP=your_whitelisted_ip
-   export NAMECHEAP_SANDBOX=true
-   export DEBUG=true
+   NAMECHEAP_API_KEY=your_api_key
+   NAMECHEAP_USERNAME=your_username
+   NAMECHEAP_API_USER=your_api_user
+   NAMECHEAP_CLIENT_IP=your_whitelisted_ip
+   NAMECHEAP_SANDBOX=true
+   DEBUG=true
    EOF
    ```
 
-4. Source the environment variables
+4. Source the environment variables (**must use `set -a` to export them**)
    ```bash
-   source .env
+   set -a; source .env; set +a
    ```
 
 ## Running the Webhook
@@ -151,7 +151,7 @@ For more detailed troubleshooting guidance, refer to our comprehensive [Troubles
 When running with `DEBUG=true`, the webhook will output detailed logs about API requests and responses. Monitor these logs to understand what's happening:
 
 ```bash
-./namecheap-webhook 2>&1 | grep -E "error|deleting|creating|updating"
+./namecheap-webhook 2>&1 | grep -E "error|Deleting|Creating|Updating"
 ```
 
 ## Integration with ExternalDNS

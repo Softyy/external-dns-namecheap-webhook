@@ -19,7 +19,7 @@ sleep 1
 # Check if webhook binary exists
 if [ ! -f "./namecheap-webhook" ]; then
   echo -e "${YELLOW}Building webhook...${NC}"
-  go build -o namecheap-webhook .
+  go build -o namecheap-webhook ./cmd/webhook
 fi
 
 # Find available ports
@@ -43,8 +43,10 @@ echo -e "${GREEN}Using metrics port: $METRICS_PORT${NC}"
 # Load environment variables from .env file
 echo -e "${YELLOW}Loading environment variables from .env file...${NC}"
 if [ -f .env ]; then
-  # Strip any comment lines and properly format for export
-  export $(grep -v '^#' .env | grep -v '^//' | xargs)
+  # Load and export all variables from .env (set -a ensures they're exported)
+  set -a
+  source <(grep -v '^#' .env | grep -v '^//' | grep -v '^$')
+  set +a
   
   # Verify environment variables were loaded
   echo -e "${GREEN}Loaded environment variables:${NC}"
