@@ -1,0 +1,40 @@
+version: 2
+
+project_name: external-dns-namecheap-webhook
+
+builds:
+  - main: ./cmd/webhook
+    binary: namecheap-webhook
+    ldflags:
+      - -s -w
+      - -X main.Version={{.Version}}
+      - -X main.Gitsha={{.Commit}}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64
+      - arm64
+
+dockers:
+  - image_templates:
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/external-dns-namecheap-webhook:{{ .Tag }}"
+      - "ghcr.io/{{ .Env.GITHUB_REPOSITORY_OWNER }}/external-dns-namecheap-webhook:latest"
+    dockerfile: Dockerfile
+    build_flag_templates:
+      - "--label=org.opencontainers.image.title=external-dns-namecheap-webhook"
+      - "--label=org.opencontainers.image.source={{ .Env.GITHUB_SERVER_URL }}/{{ .Env.GITHUB_REPOSITORY }}"
+
+checksum:
+  name_template: "checksums.txt"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"

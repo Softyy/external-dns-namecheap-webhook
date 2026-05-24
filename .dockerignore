@@ -1,0 +1,16 @@
+.git
+.github
+.env
+new.env
+*.log
+namecheap
+namecheap-webhook
+tmp/
+sdc
+docs/
+test/
+.vscode
+.devcontainer
+.air.toml
+webhook-output.log
+webhook.log

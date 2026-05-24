@@ -10,11 +10,14 @@ import (
 	"sigs.k8s.io/external-dns/endpoint"
 )
 
-// Configuration contains the Namecheap provider's configuration.
 type Configuration struct {
+	UserName             string   `env:"NAMECHEAP_USERNAME" required:"true"`
+	ApiUser              string   `env:"NAMECHEAP_API_USER" required:"true"`
 	APIKey               string   `env:"NAMECHEAP_API_KEY" required:"true"`
+	ClientIp             string   `env:"NAMECHEAP_CLIENT_IP" required:"true"`
+	UseSandbox           bool     `env:"NAMECHEAP_SANDBOX" default:"false"`
 	DryRun               bool     `env:"DRY_RUN" default:"false"`
-	Debug                bool     `env:"HETZNER_DEBUG" default:"false"`
+	Debug                bool     `env:"DEBUG" default:"false"`
 	BatchSize            int      `env:"BATCH_SIZE" default:"100"`
 	DefaultTTL           int      `env:"DEFAULT_TTL" default:"7200"`
 	DomainFilter         []string `env:"DOMAIN_FILTER" default:""`
@@ -25,22 +28,18 @@ type Configuration struct {
 
 func NewConfiguration() (*Configuration, error) {
 	cfg := &Configuration{}
-
-	// Populate with values from environment.
 	if err := env.Set(cfg); err != nil {
 		return nil, err
 	}
-
 	return cfg, nil
 }
 
-// GetDomainFilter returns the domain filter from the configuration.
-func GetDomainFilter(config Configuration) endpoint.DomainFilter {
-	var domainFilter endpoint.DomainFilter
+func GetDomainFilter(config Configuration) *endpoint.DomainFilter {
+	var domainFilter *endpoint.DomainFilter
 	createMsg := "Creating Namecheap provider with "
 
 	if config.RegexDomainFilter != "" {
-		createMsg += fmt.Sprintf("Regexp domain filter: '%s', ", config.RegexDomainFilter)
+		createMsg += fmt.Sprintf("regexp domain filter: '%s', ", config.RegexDomainFilter)
 		if config.RegexDomainExclusion != "" {
 			createMsg += fmt.Sprintf("with exclusion: '%s', ", config.RegexDomainExclusion)
 		}
@@ -64,4 +63,13 @@ func GetDomainFilter(config Configuration) endpoint.DomainFilter {
 	}
 	log.Info(createMsg)
 	return domainFilter
+}
+
+func IsSupportedRecordType(recordType string) bool {
+	switch recordType {
+	case "A", "AAAA", "ALIAS", "CAA", "CNAME", "MX", "NS", "TXT":
+		return true
+	default:
+		return false
+	}
 }

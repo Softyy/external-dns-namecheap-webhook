@@ -2,30 +2,29 @@ package namecheap
 
 import (
 	"context"
+	"fmt"
+
+	"external-dns/webhooks/namecheap/internal/metrics"
 
 	"sigs.k8s.io/external-dns/endpoint"
 	"sigs.k8s.io/external-dns/plan"
 	"sigs.k8s.io/external-dns/provider"
 
-	log "github.com/sirupsen/logrus"
-
 	namecheap "github.com/namecheap/go-namecheap-sdk/v2/namecheap"
+	log "github.com/sirupsen/logrus"
 )
 
-// NamecheapProvider implements ExternalDNS' provider.Provider interface for
-// Namecheap.
 type NamecheapProvider struct {
 	provider.BaseProvider
-	client           namecheap.Client
-	batchSize        int
-	debug            bool
-	dryRun           bool
-	defaultTTL       int
-	zoneIDNameMapper provider.ZoneIDName
-	domainFilter     endpoint.DomainFilter
+	client        apiClient
+	debug         bool
+	dryRun        bool
+	defaultTTL    int
+	batchSize     int
+	domainFilter  *endpoint.DomainFilter
+	domainMap     map[string]bool
 }
 
-// NewNamecheapProvider creates a new NamecheapProvider instance.
 func NewNamecheapProvider(config *Configuration) (*NamecheapProvider, error) {
 	var logLevel log.Level
 	if config.Debug {
@@ -35,75 +34,56 @@ func NewNamecheapProvider(config *Configuration) (*NamecheapProvider, error) {
 	}
 	log.SetLevel(logLevel)
 
+	client, err := NewNamecheapDNS(config)
+	if err != nil {
+		return nil, fmt.Errorf("cannot instantiate namecheap DNS provider: %w", err)
+	}
+
 	return &NamecheapProvider{
-		client: *namecheap.NewClient(&namecheap.ClientOptions{
-			UserName:   "softyy",
-			ApiUser:    "ApiUser",
-			ApiKey:     "6ee70379b46846bfb61802a4f68be2d1",
-			ClientIp:   "10.10.10.10",
-			UseSandbox: true}),
-		batchSize:    config.BatchSize,
+		client:       client,
 		debug:        config.Debug,
 		dryRun:       config.DryRun,
 		defaultTTL:   config.DefaultTTL,
+		batchSize:    config.BatchSize,
 		domainFilter: GetDomainFilter(*config),
+		domainMap:    make(map[string]bool),
 	}, nil
 }
 
-// Zones returns the list of the hosted DNS zones.
-// If a domain filter is set, it only returns the zones that match it.
-func (p *NamecheapProvider) Zones(ctx context.Context) ([]hdns.Zone, error) {
-	metrics := metrics.GetOpenMetricsInstance()
-	result := []hdns.Zone{}
+func (p *NamecheapProvider) Zones(ctx context.Context) ([]namecheap.DomainsGetInfoResult, error) {
+	m := metrics.GetOpenMetricsInstance()
+	result := []namecheap.DomainsGetInfoResult{}
 
-	zones, err := fetchZones(ctx, p.client, p.batchSize)
+	domains, err := fetchZones(ctx, p.client)
 	if err != nil {
 		return nil, err
 	}
 
 	filteredOutZones := 0
-	for _, zone := range zones {
-		if p.domainFilter.Match(zone.Name) {
-			result = append(result, zone)
+	for _, domain := range domains {
+		if domain.DomainName == nil {
+			continue
+		}
+
+		domainName := *domain.DomainName
+		if p.domainFilter.Match(domainName) {
+			result = append(result, domain)
+			p.domainMap[domainName] = true
 		} else {
 			filteredOutZones++
 		}
 	}
-	metrics.SetFilteredOutZones(filteredOutZones)
+	m.SetFilteredOutZones(filteredOutZones)
 
-	p.ensureZoneIDMappingPresent(zones)
+	log.Debugf("Got %d zones, filtered out %d zones.", len(result), filteredOutZones)
 
 	return result, nil
 }
 
-// AdjustEndpoints adjusts the endpoints according to the provider
-// requirements.
-func (p NamecheapProvider) AdjustEndpoints(endpoints []*endpoint.Endpoint) ([]*endpoint.Endpoint, error) {
-	adjustedEndpoints := []*endpoint.Endpoint{}
-
-	for _, ep := range endpoints {
-		_, zoneName := p.zoneIDNameMapper.FindZone(ep.DNSName)
-		adjustedTargets := endpoint.Targets{}
-		for _, t := range ep.Targets {
-			adjustedTarget := makeEndpointTarget(zoneName, t, ep.RecordType)
-			adjustedTargets = append(adjustedTargets, adjustedTarget)
-		}
-
-		ep.Targets = adjustedTargets
-		adjustedEndpoints = append(adjustedEndpoints, ep)
-	}
-
-	return adjustedEndpoints, nil
+func (p *NamecheapProvider) AdjustEndpoints(endpoints []*endpoint.Endpoint) ([]*endpoint.Endpoint, error) {
+	return endpoints, nil
 }
 
-// logDebugEndpoints logs every endpoint as a a line.
-func logDebugEndpoints(endpoints []*endpoint.Endpoint) {
-	for idx, ep := range endpoints {
-		log.WithFields(getEndpointLogFields(ep)).Debugf("Endpoint %d", idx)
-	}
-}
-
-// Records returns the list of records in all zones as a slice of endpoints.
 func (p *NamecheapProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, error) {
 	zones, err := p.Zones(ctx)
 	if err != nil {
@@ -112,17 +92,20 @@ func (p *NamecheapProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, 
 
 	endpoints := []*endpoint.Endpoint{}
 	for _, zone := range zones {
-		records, err := fetchRecords(ctx, zone.ID, p.client, p.batchSize)
+		if zone.DomainName == nil {
+			continue
+		}
+		domainName := *zone.DomainName
+
+		records, err := fetchRecords(ctx, domainName, p.client)
 		if err != nil {
 			return nil, err
 		}
 
 		skippedRecords := 0
-		// Add only endpoints from supported types.
 		for _, r := range records {
-			// Ensure the record has all the required zone information
-			r.Zone = &zone
-			if provider.SupportedRecordType(string(r.Type)) {
+			recordType := *r.HostRecord.Type
+			if IsSupportedRecordType(recordType) {
 				ep := createEndpointFromRecord(r)
 				endpoints = append(endpoints, ep)
 			} else {
@@ -130,86 +113,69 @@ func (p *NamecheapProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, 
 			}
 		}
 		m := metrics.GetOpenMetricsInstance()
-		m.SetSkippedRecords(zone.Name, skippedRecords)
+		m.SetSkippedRecords(domainName, skippedRecords)
 	}
 
-	// Merge endpoints with the same name and type (e.g., multiple A records for a single
-	// DNS name) into one endpoint with multiple targets.
 	endpoints = mergeEndpointsByNameType(endpoints)
 
-	// Log the endpoints that were found.
 	if p.debug {
 		log.Debugf("Returning %d endpoints.", len(endpoints))
-		logDebugEndpoints(endpoints)
+		for idx, ep := range endpoints {
+			log.WithFields(getEndpointLogFields(ep)).Debugf("Endpoint %d", idx)
+		}
 	}
 
 	return endpoints, nil
 }
 
-// ensureZoneIDMappingPresent prepares the zoneIDNameMapper, that associates
-// each ZoneID woth the zone name.
-func (p *NamecheapProvider) ensureZoneIDMappingPresent(zones []hdns.Zone) {
-	zoneIDNameMapper := provider.ZoneIDName{}
-	for _, z := range zones {
-		zoneIDNameMapper.Add(z.ID, z.Name)
-	}
-	p.zoneIDNameMapper = zoneIDNameMapper
-}
-
-// getRecordsByZoneID returns a map that associates each ZoneID with the
-// records contained in that zone.
-func (p *NamecheapProvider) getRecordsByZoneID(ctx context.Context) (map[string][]hdns.Record, error) {
-	recordsByZoneID := map[string][]hdns.Record{}
-
-	zones, err := p.Zones(ctx)
-	if err != nil {
-		return nil, err
-	}
-
-	// Fetch records for each zone
-	for _, zone := range zones {
-		records, err := fetchRecords(ctx, zone.ID, p.client, p.batchSize)
-		if err != nil {
-			return nil, err
-		}
-		// Add full zone information
-		zonedRecords := []hdns.Record{}
-		for _, r := range records {
-			r.Zone = &zone
-			zonedRecords = append(zonedRecords, r)
-		}
-		recordsByZoneID[zone.ID] = append(recordsByZoneID[zone.ID], zonedRecords...)
-	}
-
-	return recordsByZoneID, nil
-}
-
-// ApplyChanges applies the given set of generic changes to the provider.
-func (p *NamecheapProvider) ApplyChanges(ctx context.Context, planChanges *plan.Changes) error {
-	if !planChanges.HasChanges() {
+func (p *NamecheapProvider) ApplyChanges(ctx context.Context, changes *plan.Changes) error {
+	if !changes.HasChanges() {
+		log.Debug("No changes to be applied found.")
 		return nil
 	}
 
-	recordsByZoneID, err := p.getRecordsByZoneID(ctx)
-	if err != nil {
-		return err
-	}
+	changesRunner := NewNamecheapChanges(p.client, p.dryRun, p.defaultTTL)
 
 	log.Debug("Preparing creates")
-	createsByZoneID := endpointsByZoneID(p.zoneIDNameMapper, planChanges.Create)
+	processCreateActions(p.domainMap, changes.Create, changesRunner, p.defaultTTL)
 	log.Debug("Preparing updates")
-	updatesByZoneID := endpointsByZoneID(p.zoneIDNameMapper, planChanges.UpdateNew)
+	processUpdateActions(p.domainMap, changes.UpdateNew, changesRunner, p.defaultTTL)
 	log.Debug("Preparing deletes")
-	deletesByZoneID := endpointsByZoneID(p.zoneIDNameMapper, planChanges.Delete)
+	processDeleteActions(p.domainMap, changes.Delete, changesRunner)
 
-	changes := hetznerChanges{
-		dryRun:     p.dryRun,
-		defaultTTL: p.defaultTTL,
+	return changesRunner.ApplyChanges(ctx)
+}
+
+func (p NamecheapProvider) GetDomainFilter() endpoint.DomainFilterInterface {
+	return p.domainFilter
+}
+
+func processCreateActions(domainMap map[string]bool, creates []*endpoint.Endpoint, runner changesRunner, defaultTTL int) {
+	byDomain := endpointsByDomain(creates, domainMap)
+	for domain, eps := range byDomain {
+		for _, ep := range eps {
+			change := newChangeCreate(domain, ep, defaultTTL)
+			runner.AddChangeCreate(domain, change)
+		}
 	}
+}
 
-	processCreateActions(p.zoneIDNameMapper, recordsByZoneID, createsByZoneID, &changes)
-	processUpdateActions(p.zoneIDNameMapper, recordsByZoneID, updatesByZoneID, &changes)
-	processDeleteActions(p.zoneIDNameMapper, recordsByZoneID, deletesByZoneID, &changes)
+func processUpdateActions(domainMap map[string]bool, updates []*endpoint.Endpoint, runner changesRunner, defaultTTL int) {
+	byDomain := endpointsByDomain(updates, domainMap)
+	for domain, eps := range byDomain {
+		for _, ep := range eps {
+			change := newChangeUpdate(domain, ep, defaultTTL)
+			runner.AddChangeUpdate(domain, change)
+		}
+	}
+}
 
-	return changes.ApplyChanges(ctx, p.client)
+func processDeleteActions(domainMap map[string]bool, deletes []*endpoint.Endpoint, runner changesRunner) {
+	byDomain := endpointsByDomain(deletes, domainMap)
+	for domain, eps := range byDomain {
+		for _, ep := range eps {
+			change := newChangeDelete(domain, ep)
+			runner.AddChangeDelete(domain, change)
+		}
+	}
 }

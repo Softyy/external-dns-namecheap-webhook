@@ -7,6 +7,7 @@
 *.dll
 *.so
 *.dylib
+namecheap-webhook
 
 # Test binary, built with `go test -c`
 *.test
@@ -21,5 +22,14 @@
 go.work
 go.work.sum
 
-# env file
+# env files
 .env
+new.env
+
+# compiled binaries
+namecheap
+namecheap-webhook
+tmp/
+
+# log files
+*.log
