@@ -3,6 +3,7 @@ package namecheap
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"external-dns/webhooks/namecheap/internal/metrics"
 
@@ -11,29 +12,20 @@ import (
 	"sigs.k8s.io/external-dns/provider"
 
 	namecheap "github.com/namecheap/go-namecheap-sdk/v2/namecheap"
-	log "github.com/sirupsen/logrus"
 )
 
 type NamecheapProvider struct {
 	provider.BaseProvider
-	client        apiClient
-	debug         bool
-	dryRun        bool
-	defaultTTL    int
-	batchSize     int
-	domainFilter  *endpoint.DomainFilter
-	domainMap     map[string]bool
+	client       apiClient
+	debug        bool
+	dryRun       bool
+	defaultTTL   int
+	batchSize    int
+	domainFilter *endpoint.DomainFilter
+	domainMap    map[string]bool
 }
 
 func NewNamecheapProvider(config *Configuration) (*NamecheapProvider, error) {
-	var logLevel log.Level
-	if config.Debug {
-		logLevel = log.DebugLevel
-	} else {
-		logLevel = log.InfoLevel
-	}
-	log.SetLevel(logLevel)
-
 	client, err := NewNamecheapDNS(config)
 	if err != nil {
 		return nil, fmt.Errorf("cannot instantiate namecheap DNS provider: %w", err)
@@ -75,7 +67,7 @@ func (p *NamecheapProvider) Zones(ctx context.Context) ([]namecheap.DomainsGetIn
 	}
 	m.SetFilteredOutZones(filteredOutZones)
 
-	log.Debugf("Got %d zones, filtered out %d zones.", len(result), filteredOutZones)
+	slog.Debug("Got zones", "total", len(result), "filtered", filteredOutZones)
 
 	return result, nil
 }
@@ -119,9 +111,9 @@ func (p *NamecheapProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, 
 	endpoints = mergeEndpointsByNameType(endpoints)
 
 	if p.debug {
-		log.Debugf("Returning %d endpoints.", len(endpoints))
-		for idx, ep := range endpoints {
-			log.WithFields(getEndpointLogFields(ep)).Debugf("Endpoint %d", idx)
+		slog.Debug("Returning endpoints", "count", len(endpoints))
+		for _, ep := range endpoints {
+			slog.Debug("Endpoint", "dnsName", ep.DNSName, "recordType", ep.RecordType, "targets", ep.Targets.String(), "ttl", ep.RecordTTL)
 		}
 	}
 
@@ -130,17 +122,17 @@ func (p *NamecheapProvider) Records(ctx context.Context) ([]*endpoint.Endpoint, 
 
 func (p *NamecheapProvider) ApplyChanges(ctx context.Context, changes *plan.Changes) error {
 	if !changes.HasChanges() {
-		log.Debug("No changes to be applied found.")
+		slog.Debug("No changes to be applied found.")
 		return nil
 	}
 
 	changesRunner := NewNamecheapChanges(p.client, p.dryRun, p.defaultTTL)
 
-	log.Debug("Preparing creates")
+	slog.Debug("Preparing creates")
 	processCreateActions(p.domainMap, changes.Create, changesRunner, p.defaultTTL)
-	log.Debug("Preparing updates")
+	slog.Debug("Preparing updates")
 	processUpdateActions(p.domainMap, changes.UpdateNew, changesRunner, p.defaultTTL)
-	log.Debug("Preparing deletes")
+	slog.Debug("Preparing deletes")
 	processDeleteActions(p.domainMap, changes.Delete, changesRunner)
 
 	return changesRunner.ApplyChanges(ctx)

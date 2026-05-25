@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	namecheap "github.com/namecheap/go-namecheap-sdk/v2/namecheap"
-	log "github.com/sirupsen/logrus"
 	"sigs.k8s.io/external-dns/endpoint"
+	"log/slog"
 )
 
 type namecheapChangeCreate struct {
@@ -52,7 +52,7 @@ func newChangeCreate(domain string, ep *endpoint.Endpoint, defaultTTL int) *name
 		records = append(records, record)
 	}
 
-	log.Debugf("Change create: [%s] type [%s] in domain [%s] with %d records", hostName, ep.RecordType, domain, len(records))
+	slog.Debug("Change create", "name", hostName, "type", ep.RecordType, "domain", domain, "records", len(records))
 
 	return &namecheapChangeCreate{
 		hostName: hostName,
@@ -88,7 +88,7 @@ func newChangeUpdate(domain string, ep *endpoint.Endpoint, defaultTTL int) *name
 		records = append(records, record)
 	}
 
-	log.Debugf("Change update: [%s] type [%s] in domain [%s] with %d records", hostName, ep.RecordType, domain, len(records))
+	slog.Debug("Change update", "name", hostName, "type", ep.RecordType, "domain", domain, "records", len(records))
 
 	return &namecheapChangeUpdate{
 		hostName: hostName,
@@ -98,10 +98,9 @@ func newChangeUpdate(domain string, ep *endpoint.Endpoint, defaultTTL int) *name
 
 func newChangeDelete(domain string, ep *endpoint.Endpoint) *namecheapChangeDelete {
 	hostName := extractHostFromFQDN(ep.DNSName, domain)
-	log.Debugf("Change delete: [%s] type [%s] from domain [%s]", hostName, ep.RecordType, domain)
+	slog.Debug("Change delete", "name", hostName, "type", ep.RecordType, "domain", domain)
 	return &namecheapChangeDelete{
 		hostName:   hostName,
 		recordType: ep.RecordType,
 	}
 }
-

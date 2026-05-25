@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	namecheap "github.com/namecheap/go-namecheap-sdk/v2/namecheap"
-	log "github.com/sirupsen/logrus"
 	"sigs.k8s.io/external-dns/endpoint"
 )
 
@@ -60,15 +59,6 @@ func mergeEndpointsByNameType(endpoints []*endpoint.Endpoint) []*endpoint.Endpoi
 	}
 
 	return result
-}
-
-func getEndpointLogFields(ep *endpoint.Endpoint) log.Fields {
-	return log.Fields{
-		"dnsName":    ep.DNSName,
-		"recordTTL":  ep.RecordTTL,
-		"recordType": ep.RecordType,
-		"targets":    strings.Join(ep.Targets, ","),
-	}
 }
 
 func endpointsByDomain(endpoints []*endpoint.Endpoint, domainMap map[string]bool) map[string][]*endpoint.Endpoint {

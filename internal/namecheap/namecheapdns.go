@@ -4,12 +4,12 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"time"
 
 	"external-dns/webhooks/namecheap/internal/metrics"
 
 	namecheap "github.com/namecheap/go-namecheap-sdk/v2/namecheap"
-	log "github.com/sirupsen/logrus"
 )
 
 const (
@@ -82,7 +82,7 @@ func (n *namecheapDNS) GetZones(ctx context.Context) ([]namecheap.DomainsGetInfo
 		start := time.Now()
 		infoResponse, err := n.client.Domains.GetInfo(domainName)
 		if err != nil {
-			log.Warnf("Failed to get info for domain %s: %v", domainName, err)
+			slog.Warn("Failed to get info for domain", "domain", domainName, "error", err)
 			m.IncFailedApiCallsTotal(actGetZones)
 			continue
 		}
@@ -115,7 +115,7 @@ func (n *namecheapDNS) GetRecords(domain string) ([]namecheap.DomainsDNSHostReco
 	if response.DomainDNSGetHostsResult != nil &&
 		response.DomainDNSGetHostsResult.IsUsingOurDNS != nil &&
 		!*response.DomainDNSGetHostsResult.IsUsingOurDNS {
-		log.Warnf("Domain %s is not using Namecheap DNS. Records cannot be modified.", domain)
+		slog.Warn("Domain is not using Namecheap DNS, records cannot be modified", "domain", domain)
 	}
 
 	if response.DomainDNSGetHostsResult != nil && response.DomainDNSGetHostsResult.EmailType != nil {
@@ -174,7 +174,7 @@ func (n *namecheapDNS) DeleteRecord(ctx context.Context, domain string, recordTy
 	for _, record := range currentRecords {
 		if record.Type != nil && record.Name != nil && *record.Type == recordType && *record.Name == name {
 			recordFound = true
-			log.Infof("Deleting record: %s %s.%s", recordType, name, domain)
+			slog.Info("Deleting record", "type", recordType, "name", name, "domain", domain)
 			continue
 		}
 
@@ -193,7 +193,7 @@ func (n *namecheapDNS) DeleteRecord(ctx context.Context, domain string, recordTy
 	}
 
 	if !recordFound {
-		log.Warnf("Record %s %s.%s not found, nothing to delete", recordType, name, domain)
+		slog.Warn("Record not found, nothing to delete", "type", recordType, "name", name, "domain", domain)
 		return nil
 	}
 

@@ -1,11 +1,10 @@
 package main
 
 import (
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
-
-	log "github.com/sirupsen/logrus"
 
 	"sigs.k8s.io/external-dns/provider/webhook/api"
 
@@ -30,22 +29,23 @@ type healthStatus interface {
 func waitForSignal(status healthStatus) {
 	exitSignal := make(chan os.Signal, 1)
 	notify(exitSignal)
-	signal := <-exitSignal
+	sig := <-exitSignal
 
-	log.Infof("Signal %s received. Shutting down the webhook.", signal.String())
+	slog.Info("Signal received, shutting down the webhook", "signal", sig.String())
 	status.SetHealthy(false)
 	status.SetReady(false)
 }
 
 func main() {
-	log.Infof("Starting Namecheap webhook version %s (commit %s)", Version, Gitsha)
+	slog.Info("Starting Namecheap webhook", "version", Version, "commit", Gitsha)
 
 	socketOptions, err := server.NewSocketOptions()
 	if err != nil {
-		log.Fatalf("Cannot read configuration from environment: %s", err.Error())
+		slog.Error("Cannot read configuration from environment", "error", err)
+		os.Exit(1)
 	}
 
-	log.Infof("Starting metrics server with socket address %s", socketOptions.GetMetricsAddress())
+	slog.Info("Starting metrics server", "address", socketOptions.GetMetricsAddress())
 	serverStatus := server.Status{}
 	serverStatus.SetHealthy(true)
 	metricsSocket := server.NewMetricsSocket(&serverStatus)
@@ -54,16 +54,22 @@ func main() {
 	config, err := namecheap.NewConfiguration()
 	if err != nil {
 		serverStatus.SetHealthy(false)
-		log.Fatalf("Cannot read provider configuration: %s", err.Error())
+		slog.Error("Cannot read provider configuration", "error", err)
+		os.Exit(1)
+	}
+
+	if config.Debug {
+		slog.SetDefault(slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelDebug})))
 	}
 
 	provider, err := namecheap.NewNamecheapProvider(config)
 	if err != nil {
 		serverStatus.SetHealthy(false)
-		log.Fatalf("Cannot create Namecheap provider: %s", err.Error())
+		slog.Error("Cannot create Namecheap provider", "error", err)
+		os.Exit(1)
 	}
 
-	log.Infof("Starting webhook server with socket address %s", socketOptions.GetWebhookAddress())
+	slog.Info("Starting webhook server", "address", socketOptions.GetWebhookAddress())
 	startedChan := make(chan struct{})
 	go api.StartHTTPApi(
 		provider, startedChan,

@@ -3,11 +3,10 @@ package server
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 
 	"external-dns/webhooks/namecheap/internal/metrics"
-
-	log "github.com/sirupsen/logrus"
 )
 
 type HealthStatus interface {
@@ -59,20 +58,19 @@ func (s *MetricsSocket) Start(ctx context.Context, options SocketOptions) {
 	}
 
 	go func() {
-		log.Infof("Starting metrics server on %s", addr)
+		slog.Info("Starting metrics server", "address", addr)
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Failed to start metrics server: %v", err)
+			slog.Error("Failed to start metrics server", "error", err)
 		}
 	}()
 
 	if ctx != nil {
 		go func() {
 			<-ctx.Done()
-			log.Info("Shutting down metrics server")
+			slog.Info("Shutting down metrics server")
 			if err := srv.Shutdown(context.Background()); err != nil {
-				log.Errorf("Failed to shutdown metrics server: %v", err)
+				slog.Error("Failed to shutdown metrics server", "error", err)
 			}
 		}()
 	}
 }
-

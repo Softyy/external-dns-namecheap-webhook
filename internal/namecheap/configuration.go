@@ -2,11 +2,11 @@ package namecheap
 
 import (
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
 
 	"github.com/caarlos0/env/v11"
-	log "github.com/sirupsen/logrus"
 	"sigs.k8s.io/external-dns/endpoint"
 )
 
@@ -61,7 +61,7 @@ func GetDomainFilter(config Configuration) *endpoint.DomainFilter {
 	if strings.HasSuffix(createMsg, "with ") {
 		createMsg += "no kind of domain filters"
 	}
-	log.Info(createMsg)
+	slog.Info(createMsg)
 	return domainFilter
 }
 

@@ -4,7 +4,7 @@ import (
 	"context"
 
 	namecheap "github.com/namecheap/go-namecheap-sdk/v2/namecheap"
-	log "github.com/sirupsen/logrus"
+	"log/slog"
 )
 
 type changesRunner interface {
@@ -60,7 +60,7 @@ func (c namecheapChanges) ApplyChanges(ctx context.Context) error {
 	}
 
 	if len(allDomains) == 0 {
-		log.Debug("No changes to be applied found.")
+		slog.Debug("No changes to be applied found.")
 		return nil
 	}
 
@@ -79,13 +79,13 @@ func (c namecheapChanges) applyDomainChanges(ctx context.Context, domain string)
 	updates := c.updates[domain]
 
 	if c.dryRun {
-		log.Infof("DryRun mode enabled - skipping actual changes to domain %s", domain)
+		slog.Info("DryRun mode enabled - skipping actual changes", "domain", domain)
 		return nil
 	}
 
 	if len(deletes) > 0 && len(creates) == 0 && len(updates) == 0 {
 		for _, d := range deletes {
-			log.Infof("Deleting record [%s] of type [%s] from domain [%s]", d.hostName, d.recordType, domain)
+			slog.Info("Deleting record", "type", d.recordType, "name", d.hostName, "domain", domain)
 			if err := c.dnsClient.DeleteRecord(ctx, domain, d.recordType, d.hostName); err != nil {
 				return err
 			}
@@ -137,6 +137,6 @@ func (c namecheapChanges) applyDomainChanges(ctx context.Context, domain string)
 		}
 	}
 
-	log.Infof("Setting %d records for domain %s", len(hostRecords), domain)
+	slog.Info("Setting records for domain", "count", len(hostRecords), "domain", domain)
 	return c.dnsClient.SetRecords(domain, hostRecords, emailType)
 }
