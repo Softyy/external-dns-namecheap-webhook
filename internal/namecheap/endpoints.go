@@ -12,6 +12,7 @@ import (
 type namecheapRecord struct {
 	HostRecord *namecheap.DomainsDNSHostRecordDetailed
 	Domain     string
+	EmailType  string
 }
 
 func createEndpointFromRecord(record namecheapRecord) *endpoint.Endpoint {
@@ -19,6 +20,10 @@ func createEndpointFromRecord(record namecheapRecord) *endpoint.Endpoint {
 	name := buildFQDN(*record.HostRecord.Name, record.Domain)
 	ttl := endpoint.TTL(*record.HostRecord.TTL)
 	target := *record.HostRecord.Address
+
+	if recordType == "MX" && record.HostRecord.MXPref != nil {
+		target = fmt.Sprintf("%d %s", *record.HostRecord.MXPref, *record.HostRecord.Address)
+	}
 
 	return endpoint.NewEndpointWithTTL(name, recordType, ttl, target)
 }
@@ -100,4 +105,26 @@ func getEndpointTTL(ep *endpoint.Endpoint, defaultTTL int) int {
 		return int(ep.RecordTTL)
 	}
 	return defaultTTL
+}
+
+func adjustMXTarget(domain string, target string) string {
+	target = strings.TrimSuffix(target, ".")
+	if target == domain {
+		return "@"
+	}
+	if strings.HasSuffix(target, "."+domain) {
+		return strings.TrimSuffix(target, "."+domain)
+	}
+	return target
+}
+
+func adjustCNAMETarget(domain string, target string) string {
+	target = strings.TrimSuffix(target, ".")
+	if strings.HasSuffix(target, "."+domain) {
+		return strings.TrimSuffix(target, "."+domain)
+	}
+	if target == domain {
+		return "@"
+	}
+	return target
 }

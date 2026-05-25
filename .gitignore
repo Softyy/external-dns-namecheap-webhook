@@ -26,9 +26,6 @@ go.work.sum
 .env
 new.env
 
-# compiled binaries
-namecheap
-namecheap-webhook
 tmp/
 
 # log files
