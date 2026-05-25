@@ -75,3 +75,4 @@ func (s *MetricsSocket) Start(ctx context.Context, options SocketOptions) {
 		}()
 	}
 }
+

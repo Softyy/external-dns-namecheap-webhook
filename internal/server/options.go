@@ -4,21 +4,21 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/codingconcepts/env"
+	"github.com/caarlos0/env/v11"
 )
 
 type SocketOptions struct {
-	WebhookHost  string `env:"WEBHOOK_HOST" default:"localhost"`
-	WebhookPort  uint16 `env:"WEBHOOK_PORT" default:"8888"`
-	MetricsHost  string `env:"METRICS_HOST" default:"0.0.0.0"`
-	MetricsPort  uint16 `env:"METRICS_PORT" default:"8080"`
-	ReadTimeout  int    `env:"READ_TIMEOUT" default:"60000"`
-	WriteTimeout int    `env:"WRITE_TIMEOUT" default:"60000"`
+	WebhookHost  string `env:"WEBHOOK_HOST" envDefault:"localhost"`
+	WebhookPort  uint16 `env:"WEBHOOK_PORT" envDefault:"8888"`
+	MetricsHost  string `env:"METRICS_HOST" envDefault:"0.0.0.0"`
+	MetricsPort  uint16 `env:"METRICS_PORT" envDefault:"8080"`
+	ReadTimeout  int    `env:"READ_TIMEOUT" envDefault:"60000"`
+	WriteTimeout int    `env:"WRITE_TIMEOUT" envDefault:"60000"`
 }
 
 func NewSocketOptions() (*SocketOptions, error) {
 	opt := &SocketOptions{}
-	if err := env.Set(opt); err != nil {
+	if err := env.Parse(opt); err != nil {
 		return nil, err
 	}
 	return opt, nil

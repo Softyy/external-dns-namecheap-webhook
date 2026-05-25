@@ -3,7 +3,7 @@ module external-dns/webhooks/namecheap
 go 1.26.1
 
 require (
-	github.com/codingconcepts/env v0.0.0-20240618133406-5b0845441187
+	github.com/caarlos0/env/v11 v11.4.1
 	github.com/namecheap/go-namecheap-sdk/v2 v2.4.1
 	github.com/prometheus/client_golang v1.23.2
 	github.com/sirupsen/logrus v1.9.4
